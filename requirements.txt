@@ -1,0 +1,9 @@
+connexion==2.14.2
+flask==2.2.2
+gunicorn==20.1.0
+flask-sqlalchemy==3.0.3
+jsonschema==4.17.3
+sqlalchemy==2.0.2
+swagger-ui-bundle
+PyJWT==2.6.0
+markupsafe==2.1.2
