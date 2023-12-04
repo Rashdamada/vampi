@@ -1,71 +1,114 @@
-#!/usr/bin/env -S npm run tsn -T
+import {OpenAI} from 'openai';
+import { Stream } from 'openai/streaming';
 
-/**
- * Fine-tuning allows you to train models on your own data.
- *
- * See this guide for more information:
- * - https://platform.openai.com/docs/guides/fine-tuning
- */
-
-import fs from 'fs';
-import OpenAI from 'openai';
-import { FineTuningJobEvent } from 'openai/resources/fine-tuning';
-
-// Gets the API Key from the environment variable `OPENAI_API_KEY`
-const client = new OpenAI();
-
+// gets API Key from environment variable OPENAI_API_KEY
+const openai = new OpenAI();
+const streams = new Stream(); 
 async function main() {
-  console.log(`Uploading file`);
+  // ---------------- Explicit non-streaming params ------------
 
-  let file = await client.files.create({
-    file: fs.createReadStream('./examples/fine-tuning-data.jsonl'),
-    purpose: 'fine-tune',
-  });
-  console.log(`Uploaded file with ID: ${file.id}`);
+  const params: OpenAI.Chat.ChatCompletionCreateParams = {
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: 'Say this is a test!' }],
+  };
+  const completion = await openai.chat.completions.create(params);
+  console.log(completion.choices[0]?.message?.content);
 
-  console.log('-----');
+  // ---------------- Explicit streaming params ----------------
 
-  console.log(`Waiting for file to be processed`);
-  while (true) {
-    file = await client.files.retrieve(file.id);
-    console.log(`File status: ${file.status}`);
+  const streamingParams: OpenAI.Chat.ChatCompletionCreateParams = {
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: 'Say this is a test!' }],
+    stream: true,
+  };
 
-    if (file.status === 'processed') {
-      break;
-    } else {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+  const stream = await openai.chat.completions.create(streamingParams);
+  for await (const chunk of stream) {
+    process.stdout.write(chunk.choices[0]?.delta?.content || '');
+  }
+  process.stdout.write('\n');
+
+  // ---------------- Explicit (non)streaming types ----------------
+
+  const params1: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: 'Say this is a test!' }],
+  };
+
+  const params2: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: 'Say this is a test!' }],
+    stream: true,
+  };
+
+  // ---------------- Implicit params type -------------------
+
+  // Note: the `as const` is required here so that TS can properly infer
+  // the right params type.
+  //
+  // If you didn't include it then you'd also get an error saying that
+  // `role: string` is not assignable.
+  const streamingParams2 = {
+    model: 'gpt-4',
+    messages: [{ role: 'user' as const, content: 'Say this is a test!' }],
+    stream: true as const,
+  };
+
+  // TS knows this is a Stream instance.
+  const stream2 = await openai.chat.completions.create(streamingParams2);
+  for await (const chunk of stream2) {
+    process.stdout.write(chunk.choices[0]?.delta?.content || '');
+  }
+  process.stdout.write('\n');
+
+  // Without the `as const` for `stream`.
+  const streamingParams3 = {
+    model: 'gpt-4',
+    messages: [{ role: 'user' as const, content: 'Say this is a test!' }],
+    stream: true,
+  };
+
+  // TS doesn't know if this is a `Stream` or a direct response
+  const response = await openai.chat.completions.create(streamingParams3);
+  if (response instanceof Stream) {
+    // here TS knows the response type is a `Stream`
+  } else {
+    // here TS knows the response type is a `ChatCompletion`
   }
 
-  console.log('-----');
+  // ---------------- Dynamic params type -------------------
 
-  console.log(`Starting fine-tuning`);
-  let fineTune = await client.fineTuning.jobs.create({ model: 'gpt-3.5-turbo', training_file: file.id });
-  console.log(`Fine-tuning ID: ${fineTune.id}`);
+  // TS knows this is a `Stream`
+  const streamParamsFromFn = await createCompletionParams(true);
+  const streamFromFn = await openai.chat.completions.create(streamParamsFromFn);
+  console.log(streamFromFn);
 
-  console.log('-----');
-
-  console.log(`Track fine-tuning progress:`);
-
-  const events: Record<string, FineTuningJobEvent> = {};
-
-  while (fineTune.status == 'running' || fineTune.status == 'created') {
-    fineTune = await client.fineTuning.jobs.retrieve(fineTune.id);
-    console.log(`${fineTune.status}`);
-
-    const { data } = await client.fineTuning.jobs.listEvents(fineTune.id, { limit: 100 });
-    for (const event of data.reverse()) {
-      if (event.id in events) continue;
-      events[event.id] = event;
-      const timestamp = new Date(event.created_at * 1000);
-      console.log(`- ${timestamp.toLocaleTimeString()}: ${event.message}`);
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-  }
+  // TS knows this is a `ChatCompletion`
+  const paramsFromFn = await createCompletionParams(false);
+  const completionFromFn = await openai.chat.completions.create(paramsFromFn);
+  console.log(completionFromFn);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Dynamically construct the params object while retaining whether or
+// not the response will be streamed.
+export async function createCompletionParams(
+  stream: true,
+): Promise<OpenAI.Chat.ChatCompletionCreateParamsStreaming>;
+export async function createCompletionParams(
+  stream: false,
+): Promise<OpenAI.Chat.ChatCompletionCreateParamsNonStreaming>;
+export async function createCompletionParams(
+  stream: boolean,
+): Promise<OpenAI.Chat.ChatCompletionCreateParams> {
+  const params = {
+    model: 'gpt-3.5-turbo',
+    messages: [{ role: 'user' as const, content: 'Hello!' }],
+    stream: stream,
+  };
+
+  // <your logic here>
+
+  return params;
+}
+
+main();
