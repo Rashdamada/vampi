@@ -12,6 +12,7 @@ class Patient:
     PatientId = 'pid'
     PatientLastName = 'last name'
     PatientWeight = 76
+    
 app = Flask(__name__)
 
 # Endpoint to create and populate the database with dummy data
