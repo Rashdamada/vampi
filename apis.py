@@ -14,6 +14,10 @@ def home():
 # Users endpoints
 @app.route('/users/v1', methods=['GET'])
 def get_all_users():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    email = data.get('email')
     return jsonify([{'email': 'user1@example.com', 'username': 'user1'}, {'email': 'user2@example.com', 'username': 'user2'}])
 
 @app.route('/users/v1/_debug', methods=['GET'])
