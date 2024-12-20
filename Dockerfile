@@ -1,4 +1,4 @@
-FROM python:3.11.2-slim-bullseye AS app
+FROM python:3.14.0a3-slim-bullseye AS app
 
 RUN mkdir /vampi
 
